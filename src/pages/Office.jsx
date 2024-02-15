@@ -1,53 +1,22 @@
 import { Fragment, useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-
 import socketIOClient from "socket.io-client";
-
 import { Menu } from "@headlessui/react";
-import { Cog6ToothIcon } from "@heroicons/react/24/outline";
+import {
+    toast, Toaster
+} from "react-hot-toast";
 
 import classNames from "../utils/classNames";
 import avatarList from "../constants/avatars";
 import Map from "./components/Map";
 import timeFrom from "../utils/timeFrom";
+import zones from "../constants/zones";
 
 const Office = () => {
     const nav = useNavigate();
     const [socket, setSocket] = useState(null);
     const [users, setUsers] = useState([]);
-
-    const renderUsers = (_users) => {
-        _users.forEach((user) => {
-            if (
-                document.querySelector(
-                    `#user${user.socket.toLowerCase().replace(/^\s+/g, "")}`,
-                )
-            ) {
-                document
-                    .querySelector(
-                        `#user${user.socket.toLowerCase().replace(/^\s+/g, "")}`,
-                    )
-                    .remove();
-            }
-            const chair = document
-                .querySelectorAll("#Chairs g")
-                [Number(user.chair) - 1].getBoundingClientRect();
-            const userElement = document.createElement("img");
-            userElement.id = "user" + user.socket.toLowerCase().replace(/^\s+/g, "");
-            userElement.style.position = "absolute";
-            userElement.style.top = chair.y + "px";
-            userElement.style.left = chair.x + "px";
-            userElement.style.width = "30px";
-            userElement.style.height = "30px";
-            userElement.style.borderRadius = "50%";
-            userElement.style.zIndex = "100";
-            userElement.style.pointerEvents = "none";
-            userElement.src = avatarList.find(
-                (a) => a.name == user.user.avatar,
-            ).element;
-            document.querySelector("#map").appendChild(userElement);
-        });
-    };
+    const [messages, setMessages] = useState([]);
 
     useEffect(() => {
         if (!localStorage.getItem("username")) {
@@ -67,47 +36,29 @@ const Office = () => {
         socket.on("users", (_users) => {
             console.log(_users);
             setUsers(_users);
-
-            renderUsers(_users);
         });
 
         return () => socket.disconnect();
     }, []);
 
-    const [scale, setScale] = useState(1);
-    const [position, setPosition] = useState({ x: 0, y: 0 });
-    const mapRef = useRef(null);
+    useEffect(() => {
+        if (!socket) return;
+        socket.on("message", (message) => {
+            const user = users.find((u) => u.user.username.toLowerCase() === localStorage.getItem("username").toLowerCase());
+            console.log(user);
+            if (!user) return;
 
-    const handleWheel = (e) => {
-        e.preventDefault();
-        const scaleAdjustment = e.deltaY > 0 ? 0.9 : 1.1;
-        setScale((prevScale) => prevScale * scaleAdjustment);
+            if (user.zone.id != message.zone.id) return;
+            if (messages.length > 5) setMessages((prev) => prev.slice(1))
+            setMessages((prev) => [...prev, message]);
+            document.getElementById("chat").scroll({
+                top: document.getElementById("chat").scrollHeight,
+                behavior: "smooth",
+            })
+        })
 
-        renderUsers(users);
-    };
-
-    const handleMouseDown = (e) => {
-        const startX = e.pageX - position.x;
-        const startY = e.pageY - position.y;
-
-        const handleMouseMove = (moveEvent) => {
-            const newX = moveEvent.pageX - startX;
-            const newY = moveEvent.pageY - startY;
-            setPosition({ x: newX, y: newY });
-
-            renderUsers(users);
-        };
-
-        const handleMouseUp = () => {
-            document.removeEventListener("mousemove", handleMouseMove);
-            document.removeEventListener("mouseup", handleMouseUp);
-
-            renderUsers(users);
-        };
-
-        document.addEventListener("mousemove", handleMouseMove);
-        document.addEventListener("mouseup", handleMouseUp);
-    };
+        return () => socket.off("message");
+    }, [users, socket, messages])
 
     return (
         <>
@@ -147,38 +98,126 @@ const Office = () => {
                           >
                             {user.user.username.charAt(0)}
                           </span>
+                                                    <div className="flex flex-col">
                                                     <span className="truncate">
                             {user.user.username}{" "}
-                                                        {timeFrom(new Date(user.connectedAt).getTime())}
+                                                        (working {timeFrom(new Date(user.connectedAt).getTime())})
                           </span>
+                                                        <span className="text-xs text-gray-400">
+                            {user?.zone?.name} (x: {user?.x}, y: {user?.y})
+                            </span>
+                                                    </div>
                                                 </a>
                                             </li>
                                         ))}
                                     </ul>
                                 </li>
-                                <li className="mt-auto">
-                                    <a
-                                        href="#"
-                                        onClick={() => {
-                                            localStorage.removeItem("username");
-                                            nav("/auth");
-                                        }}
-                                        className="group -mx-2 flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6 text-gray-700 hover:bg-gray-50 hover:text-indigo-600"
-                                    >
-                                        <Cog6ToothIcon
-                                            className="h-6 w-6 shrink-0 text-gray-400 group-hover:text-indigo-600"
-                                            aria-hidden="true"
-                                        />
-                                        Log out
-                                    </a>
+
+                                <li>
+                                    <div className="text-xs font-semibold leading-6 text-gray-400">
+                                        ZONES
+                                    </div>
+                                    <ul role="list" className="-mx-2 mt-2 space-y-1">
+                                        {zones.map((zone) => (
+                                            <li key={zone.name}>
+                                                <a
+                                                    className={classNames(
+                                                        false
+                                                            ? "bg-gray-50 text-indigo-600"
+                                                            : "text-gray-700 hover:text-indigo-600 hover:bg-gray-50",
+                                                        "group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold",
+                                                    )}
+                                                >
+
+                                                    <div className="flex flex-col">
+                                                        <span className="truncate">{zone.name}</span>
+                                                        <span className="text-xs text-gray-400">
+                            {users.filter((user) => user?.zone?.name === zone.name).length}{" "}users / {zone.maxUsers} max
+                            </span>
+                                                    </div>
+                                                </a>
+                                            </li>
+                                        ))}
+                                    </ul>
                                 </li>
+                                <li style={{
+                                    maxHeight: "100%",
+                                    overflowY: "auto"
+                                }} id={"chat"}>
+                                    <div className="text-xs font-semibold leading-6 text-gray-400" style={{
+                                        position: "sticky",
+                                        top: "0",
+zIndex: "10",
+                                        backgroundColor: "white"
+                                    }}>
+                                        CHAT
+                                    </div>
+                                    {messages.length === 0 && (
+                                        <div className="mt-2">
+                                            <span className="text-xs text-gray-400">
+                                                No messages yet
+                                            </span>
+                                        </div>
+                                    )}
+                                    {messages.map((message) => (
+                                        <div key={message.id} className="mt-2">
+                                            <div className="flex items-center gap-x-3">
+                                                <img className="h-8 w-8 rounded-full bg-gray-50" src={
+                                                    avatarList.find(
+                                                        (a) => a.name == message.user.user.avatar,
+                                                    ).element
+                                                } alt=""/>
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm font-semibold leading-6 text-gray-900">
+                                                        {message.user.user.username}
+                                                    </span>
+                                                    <span className="text-xs text-gray-400">
+                                                        {message.message}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    <div className="mt-2" style={{
+                                        position: "sticky",
+                                        bottom: "0",
+                                        zIndex: "10",
+                                        backgroundColor: "white"
+                                    }}>
+                                        <input
+                                            type="text"
+                                            className="w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                                            placeholder="Type a message"
+                                            onKeyDown={(e) => {
+                                                if (e.key === "Enter") {
+                                                    socket.emit("message", e.target.value);
+                                                    e.target.value = "";
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                </li>
+                                    {/*<li className="mt-auto">*/}
+                                    {/*    <a*/}
+                                    {/*        href="#"*/}
+                                    {/*        onClick={() => {*/}
+                                    {/*            localStorage.removeItem("username");*/}
+                                    {/*            nav("/auth");*/}
+                                    {/*        }}*/}
+                                    {/*        className="group -mx-2 flex gap-x-3 rounded-md p-2 text-sm font-semibold leading-6 text-red-500 hover:bg-gray-50 hover:text-red-600"*/}
+                                    {/*    >*/}
+                                    {/*        Log out*/}
+                                    {/*    </a>*/}
+                                    {/*</li>*/}
                             </ul>
                         </nav>
                     </div>
                 </div>
 
                 <div className="lg:pl-72">
-                    <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
+                    <div
+                        className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
                         <div
                             className="h-6 w-px bg-gray-200 lg:hidden"
                             aria-hidden="true"
@@ -216,25 +255,16 @@ const Office = () => {
                         <div className="px-4 sm:px-6 lg:px-8">
                             <div
                                 id="map"
-                                onWheel={handleWheel}
-                                onMouseDown={handleMouseDown}
-                                style={{
-                                    cursor: "grab",
-                                    overflow: "hidden",
-                                    width: "100%",
-                                    height: "100%",
-                                }}
                             >
-                                <Map scale={scale} position={position} mapRef={mapRef} />
+                                <Map initialUsers={users} setMainUsers={setUsers} socket={socket}
+                                     username={localStorage.getItem("username")} toast={toast}/>
                             </div>
                         </div>
-
-                        <p className={"px-5 caret-blue-100"}>
-                            You can move around the map, zoom in, zoom out.
-                        </p>
                     </main>
                 </div>
             </div>
+
+            <Toaster />
         </>
     );
 };

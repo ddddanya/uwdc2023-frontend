@@ -7,7 +7,7 @@ function timeFrom(timestamp) {
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
-    return `${hours}h ${minutes}m ${seconds}s`;
+    return `${hours}h ${minutes}m`;
 }
 
 export default timeFrom;
